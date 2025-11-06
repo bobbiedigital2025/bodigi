@@ -1,65 +1,34 @@
 # BoDiGi™ - Google Cloud Build Configuration
+# Fully automated Build → Push → Deploy pipeline
+
 steps:
-  - name: 'node:18'
-    entrypoint: 'npm'
-    args: ['ci']
-    id: 'install-dependencies'
-
+  # Step 1: Build container image
   - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - 'us-east5-docker.pkg.dev/$PROJECT_ID/bodigi-images/bodigi-frontend:$SHORT_SHA'
-      - '-t'
-      - 'us-east5-docker.pkg.dev/$PROJECT_ID/bodigi-images/bodigi-frontend:latest'
-      - '.'
-    id: 'build-image'
-    waitFor: ['install-dependencies']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/bodigi', '.']
 
+  # Step 2: Push image to registry
   - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'push'
-      - 'us-east5-docker.pkg.dev/$PROJECT_ID/bodigi-images/bodigi-frontend:$SHORT_SHA'
-    id: 'push-image'
-    waitFor: ['build-image']
+    args: ['push', 'gcr.io/$PROJECT_ID/bodigi']
 
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'push'
-      - 'us-east5-docker.pkg.dev/$PROJECT_ID/bodigi-images/bodigi-frontend:latest'
-    id: 'push-latest'
-    waitFor: ['push-image']
-
+  # Step 3: Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'gcloud'
+    entrypoint: gcloud
     args:
-      - 'run'
-      - 'deploy'
-      - 'bodigi-frontend'
-      - '--image=us-east5-docker.pkg.dev/$PROJECT_ID/bodigi-images/bodigi-frontend:$SHORT_SHA'
-      - '--region=us-east5'
-      - '--platform=managed'
-      - '--allow-unauthenticated'
-      - '--port=8080'
-      - '--memory=512Mi'
-      - '--cpu=1'
-      - '--min-instances=0'
-      - '--max-instances=10'
-      - '--set-env-vars=VITE_GEMINI_API_KEY=${_GEMINI_API_KEY}'
-      - '--set-env-vars=VITE_GCP_PROJECT_ID=$PROJECT_ID'
-      - '--set-env-vars=VITE_GCP_REGION=us-east5'
-    id: 'deploy-cloud-run'
-    waitFor: ['push-latest']
+      [
+        'run',
+        'deploy',
+        'bodigi-app',
+        '--image',
+        'gcr.io/$PROJECT_ID/bodigi',
+        '--region',
+        'us-central1',
+        '--platform',
+        'managed',
+        '--allow-unauthenticated'
+      ]
 
 images:
-  - 'us-east5-docker.pkg.dev/$PROJECT_ID/bodigi-images/bodigi-frontend:$SHORT_SHA'
-  - 'us-east5-docker.pkg.dev/$PROJECT_ID/bodigi-images/bodigi-frontend:latest'
-
-substitutions:
-  _GEMINI_API_KEY: 'your-gemini-api-key'
-
-timeout: '1200s'
+  - 'gcr.io/$PROJECT_ID/bodigi'
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  machineType: 'N1_HIGHCPU_8'
